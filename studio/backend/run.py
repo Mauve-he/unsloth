@@ -736,10 +736,6 @@ def run_server(
     if api_only:
         os.environ["UNSLOTH_API_ONLY"] = "1"
 
-    import nest_asyncio
-
-    nest_asyncio.apply()
-
     import asyncio
     from threading import Thread, Event
     import uvicorn
@@ -867,7 +863,7 @@ def run_server(
 
     # Run server in a daemon thread.
     # Use an explicit new_event_loop() + run_until_complete() instead of
-    # asyncio.run() to avoid nest_asyncio's global patches to asyncio.run
+    # asyncio.run() to avoid global patches to asyncio.run
     # interfering when called from a thread while Colab/IPython already has
     # a running loop on the main thread.
     def _run():

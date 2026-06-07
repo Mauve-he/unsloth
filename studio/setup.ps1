@@ -1424,7 +1424,7 @@ $PythonOk = $false
 $DetectedPyVer = $null
 
 if ($PyLauncher) {
-    foreach ($minor in @("3.13", "3.12", "3.11")) {
+    foreach ($minor in @("3.14", "3.13", "3.12", "3.11")) {
         try {
             $out = & $PyLauncher.Source "-$minor" --version 2>&1 | Out-String
             if ($out -match 'Python (3\.\d+\.\d+)') {
@@ -1454,7 +1454,7 @@ if (-not $PythonOk -and $HasPython) {
     $PyVer = python --version 2>&1
     if ($PyVer -match "(\d+)\.(\d+)") {
         $PyMajor = [int]$Matches[1]; $PyMinor = [int]$Matches[2]
-        if ($PyMajor -eq 3 -and $PyMinor -ge 11 -and $PyMinor -lt 14) {
+        if ($PyMajor -eq 3 -and $PyMinor -ge 11 -and $PyMinor -lt 15) {
             $DetectedPyVer = "$PyMajor.$PyMinor"
             $PythonOk = $true
         }
@@ -1710,12 +1710,12 @@ function Test-IsConda {
 #    py.exe is installed by python.org and resolves to standalone CPython.
 $pyLauncher = Get-Command py -CommandType Application -ErrorAction SilentlyContinue
 if ($pyLauncher -and $pyLauncher.Source -notmatch $CondaSkipPattern) {
-    foreach ($minor in @("3.13", "3.12", "3.11")) {
+    foreach ($minor in @("3.14", "3.13", "3.12", "3.11")) {
         try {
             $out = & $pyLauncher.Source "-$minor" --version 2>&1 | Out-String
             if ($out -match 'Python 3\.(\d+)') {
                 $pyMinor = [int]$Matches[1]
-                if ($pyMinor -ge 11 -and $pyMinor -le 13) {
+                if ($pyMinor -ge 11 -and $pyMinor -le 14) {
                     # Resolve the actual executable path so venv creation
                     # does not re-resolve back to a conda interpreter.
                     $resolvedExe = (& $pyLauncher.Source "-$minor" -c "import sys; print(sys.executable)" 2>$null | Out-String).Trim()
@@ -1923,12 +1923,7 @@ if ((Test-Path -LiteralPath $VenvDir -PathType Container) -and -not $NoTorchMode
     }
 }
 
-if (-not (Test-Path -LiteralPath $VenvDir)) {
-    Write-Host "[ERROR] Virtual environment not found at $VenvDir" -ForegroundColor Red
-    Write-Host "        Run install.ps1 first to create the environment:" -ForegroundColor Yellow
-    Write-Host "        irm https://unsloth.ai/install.ps1 | iex" -ForegroundColor Yellow
-    exit 1
-} else {
+if (Test-Path -LiteralPath $VenvDir) {
     substep "reusing existing virtual environment at $VenvDir"
     $_venvPyExe = Join-Path $VenvDir "Scripts\python.exe"
     if (Test-Path -LiteralPath $_venvPyExe) {
@@ -1937,6 +1932,9 @@ if (-not (Test-Path -LiteralPath $VenvDir)) {
             if ($_venvPyVer) { substep $_venvPyVer }
         } catch {}
     }
+} elseif ($PythonCmd) {
+    substep "no venv -- using system Python $DetectedPyVer" "Yellow"
+    $_venvPyExe = $PythonCmd
 }
 
 # pip and python write to stderr even on success (progress bars, warnings).
@@ -1947,7 +1945,7 @@ $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 
 $ActivateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
-. $ActivateScript
+if (Test-Path -LiteralPath $ActivateScript) { . $ActivateScript }
 
 # Try to use uv (much faster than pip), fall back to pip if unavailable
 $UseUv = $false
@@ -1960,7 +1958,7 @@ if (Get-Command uv -ErrorAction SilentlyContinue) {
         Refresh-Environment
         # Re-activate venv since Refresh-Environment rebuilds PATH from
         # registry and drops the venv's Scripts directory
-        . $ActivateScript
+        if (Test-Path -LiteralPath $ActivateScript) { . $ActivateScript }
         if (Get-Command uv -ErrorAction SilentlyContinue) { $UseUv = $true }
     } catch { }
 }
@@ -2184,6 +2182,12 @@ if (-not $ROCmIndexUrl -and $CuTag -eq "cpu") {
 
 # Rename running unsloth.exe so pip can replace it (Windows refuses to delete a mapped .exe).
 $VenvScriptsDir = Join-Path $VenvDir "Scripts"
+if (-not (Test-Path -LiteralPath $VenvScriptsDir)) {
+    # No venv: use system Python's Scripts directory
+    $VenvScriptsDir = & $_venvPyExe -c "import sysconfig; print(sysconfig.get_path('scripts'))" 2>$null
+    if (-not $VenvScriptsDir) { $VenvScriptsDir = Join-Path (Split-Path $_venvPyExe -Parent) "Scripts" }
+    substep "using system Python Scripts dir: $VenvScriptsDir" "Yellow"
+}
 $RunningUnslothExe = Join-Path $VenvScriptsDir "unsloth.exe"
 if (Test-Path -LiteralPath $RunningUnslothExe -PathType Leaf) {
     $StaleUnslothExe = "$RunningUnslothExe.deleteme"

@@ -162,7 +162,7 @@ def _studio_venv_python() -> Optional[Path]:
         p = STUDIO_HOME / "unsloth_studio" / "Scripts" / "python.exe"
     else:
         p = STUDIO_HOME / "unsloth_studio" / "bin" / "python"
-    return p if p.is_file() else None
+    return p if p.is_file() else Path(sys.executable) if sys.executable else None
 
 
 def _find_run_py() -> Optional[Path]:
